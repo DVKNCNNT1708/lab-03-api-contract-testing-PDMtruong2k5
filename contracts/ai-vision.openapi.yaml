@@ -1,102 +1,135 @@
 openapi: 3.1.0
+
 info:
-  title: Smart Campus — AI Vision API
-  version: 0.3.0
+  title: Smart Campus AI Vision API
+  version: 1.0.0
   description: |
-    Contract mock tối thiểu cho consumer-side smoke test trong FIT4110 Lab 03.
-    File này giúp Camera Stream hoặc Core Business gọi thử AI Vision khi service thật chưa hoàn thiện.
+    AI Vision service for Smart Campus.
+    This mock supports consumer-side smoke tests for Camera and Core.
+  contact:
+    name: FIT4110 Lab 03 Team
+    email: fit4110@example.com
+
 servers:
   - url: http://localhost:4011
-    description: Prism mock server for AI Vision
+    description: Local AI Vision Service
+
 tags:
-  - name: vision
-    description: Image detection
-  - name: system
-    description: Health and runtime information
+  - name: Health
+  - name: Detections
+  - name: Models
+
 security:
   - bearerAuth: []
+
 paths:
   /health:
     get:
-      tags: [system]
-      operationId: getVisionHealth
-      summary: Kiểm tra trạng thái AI Vision mock
-      description: Public health check dùng để kiểm tra mock AI Vision đã sẵn sàng.
+      tags: [Health]
+      operationId: getHealth
+      summary: Health check
+      description: Returns service health information for the AI Vision service.
       security: []
       responses:
-        "200":
-          description: Service đang hoạt động
+        '200':
+          description: Service healthy
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-              examples:
-                ok:
-                  value:
-                    status: ok
-                    service: ai-vision
-                    version: 0.3.0
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: ok
+                service: ai-vision
+                time: '2019-08-24T14:15:22Z'
 
   /detect:
     post:
-      tags: [vision]
+      tags: [Detections]
       operationId: detectImage
-      summary: Phát hiện đối tượng trong ảnh
-      description: Endpoint mock tối thiểu để consumer kiểm tra luồng Camera/Core gọi AI Vision.
+      summary: Detect objects in an image
+      description: Accepts an image URL or base64 payload and returns the primary detection result.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/DetectionRequest"
+              $ref: '#/components/schemas/DetectRequest'
             examples:
-              valid_url:
+              imageUrl:
+                summary: Detect from image URL
                 value:
                   camera_id: CAM01
                   image_url: https://example.com/frame.jpg
+              base64:
+                summary: Detect from base64 image
+                value:
+                  camera_id: CAM01
+                  image_base64: iVBORw0KGgoAAAANSUhEUgAA
       responses:
-        "200":
-          description: Kết quả nhận diện
+        '200':
+          description: Detection result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DetectionResponse"
-              examples:
-                detected:
-                  value:
-                    detection_id: DET001
-                    camera_id: CAM01
-                    label: person
-                    confidence: 0.91
-                    risk_level: medium
-        "400":
-          description: Request không hợp lệ
+                $ref: '#/components/schemas/DetectionResult'
+              example:
+                detection_id: DET001
+                label: person
+                confidence: 0.91
+                risk_level: medium
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /detections/{id}:
+    get:
+      tags: [Detections]
+      operationId: getDetectionById
+      summary: Get detection by id
+      description: Returns a previously generated detection result.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detection result
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ProblemDetails"
-              examples:
-                invalid_image:
-                  value:
-                    type: https://smart-campus.local/problems/invalid-image
-                    title: Invalid image
-                    status: 400
-                    detail: image_url or image_base64 is required
-                    instance: /detect
-        "401":
-          description: Thiếu hoặc sai token
+                $ref: '#/components/schemas/DetectionResult'
+              example:
+                detection_id: DET001
+                label: person
+                confidence: 0.91
+                risk_level: medium
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models/info:
+    get:
+      tags: [Models]
+      operationId: getModelInfo
+      summary: Get model information
+      description: Returns model metadata used by the AI Vision service.
+      responses:
+        '200':
+          description: Model metadata
+          headers:
+            Cache-Control:
+              description: Cache hint for clients
+              schema:
+                type: string
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ProblemDetails"
-              examples:
-                unauthorized:
-                  value:
-                    type: https://smart-campus.local/problems/unauthorized
-                    title: Unauthorized
-                    status: 401
-                    detail: Missing or invalid bearer token
-                    instance: /detect
+                $ref: '#/components/schemas/ModelInfo'
+              example:
+                model_id: vision-v1
+                model_name: SmartCampus Vision Detector
+                version: 1.0.0
+                updated_at: '2019-08-24T14:15:22Z'
 
 components:
   securitySchemes:
@@ -105,76 +138,106 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: invalid_request
+            message: Request body is invalid.
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: not_found
+            message: Detection not found.
+
   schemas:
-    DetectionRequest:
+    HealthStatus:
       type: object
-      required: [camera_id]
-      properties:
-        camera_id:
-          type: string
-          minLength: 3
-          example: CAM01
-        image_url:
-          type: string
-          format: uri
-          example: https://example.com/frame.jpg
-        image_base64:
-          type: string
-          description: Chuỗi base64 nếu không dùng image_url
-
-    DetectionResponse:
-      type: object
-      required: [detection_id, label, confidence, risk_level]
-      properties:
-        detection_id:
-          type: string
-          example: DET001
-        camera_id:
-          type: string
-          example: CAM01
-        label:
-          type: string
-          enum: [person, vehicle, unknown]
-          example: person
-        confidence:
-          type: number
-          minimum: 0
-          maximum: 1
-          example: 0.91
-        risk_level:
-          type: string
-          enum: [low, medium, high]
-          example: medium
-
-    HealthResponse:
-      type: object
-      required: [status, service, version]
+      required:
+        - status
+        - service
+        - time
       properties:
         status:
           type: string
           enum: [ok]
-          example: ok
         service:
           type: string
-          example: ai-vision
-        version:
+        time:
           type: string
-          example: 0.3.0
+          format: date-time
 
-    ProblemDetails:
+    DetectRequest:
       type: object
-      required: [type, title, status, detail]
+      required:
+        - camera_id
       properties:
-        type:
+        camera_id:
+          type: string
+          example: CAM01
+        image_url:
           type: string
           format: uri
-        title:
+        image_base64:
           type: string
-        status:
-          type: integer
-          minimum: 400
-          maximum: 599
-        detail:
+      anyOf:
+        - required: [image_url]
+        - required: [image_base64]
+
+    DetectionResult:
+      type: object
+      required:
+        - detection_id
+        - label
+        - confidence
+        - risk_level
+      properties:
+        detection_id:
           type: string
-        instance:
+        label:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+
+    ModelInfo:
+      type: object
+      required:
+        - model_id
+        - model_name
+        - version
+        - updated_at
+      properties:
+        model_id:
+          type: string
+        model_name:
+          type: string
+        version:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
           type: string
